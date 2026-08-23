@@ -34,6 +34,18 @@ export async function POST(
       case "nvidia":
         result = await verifyNvidia(apiKey);
         break;
+      case "cohere":
+        result = await verifyCohere(apiKey);
+        break;
+      case "perplexity":
+        result = await verifyPerplexity(apiKey);
+        break;
+      case "together":
+        result = await verifyTogether(apiKey);
+        break;
+      case "openrouter":
+        result = await verifyOpenRouter(apiKey);
+        break;
       default:
         return NextResponse.json({ error: "Unsupported provider" }, { status: 400 });
     }
@@ -50,165 +62,140 @@ export async function POST(
 
 async function verifyOpenAI(apiKey: string) {
   const res = await fetch("https://api.openai.com/v1/models", {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || "Invalid OpenAI API Key");
-  }
-
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error?.message || "Invalid OpenAI API Key");
   const data = await res.json();
-  const models = data.data
-    .filter((m: any) => m.id.startsWith("gpt"))
-    .map((m: any) => ({ id: m.id, details: m }));
-
   return {
     provider: "OpenAI",
-    models: models,
-    contextLimit: "128,000 tokens (GPT-4o)",
-    accountInfo: `Access to ${models.length} OpenAI models.`,
+    models: data.data.filter((m: any) => m.id.startsWith("gpt") || m.id.startsWith("o1")).map((m: any) => ({ id: m.id, details: m })),
+    contextLimit: "Up to 128,000 tokens",
+    accountInfo: "Valid API Key.",
   };
 }
 
 async function verifyAnthropic(apiKey: string) {
   const res = await fetch("https://api.anthropic.com/v1/models", {
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
   });
-
   if (!res.ok) {
     const fallbackRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }]
-      }),
+      method: "POST", headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
     });
-
-    if (!fallbackRes.ok) {
-      const errorData = await fallbackRes.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || "Invalid Anthropic API Key");
-    }
-
+    if (!fallbackRes.ok) throw new Error((await fallbackRes.json().catch(()=>({}))).error?.message || "Invalid Anthropic API Key");
     return {
       provider: "Anthropic",
-      models: [
-        { id: "claude-3-opus", details: { family: "Claude 3" } },
-        { id: "claude-3-sonnet", details: { family: "Claude 3" } },
-        { id: "claude-3-haiku", details: { family: "Claude 3" } },
-        { id: "claude-3-5-sonnet", details: { family: "Claude 3.5" } }
-      ],
-      contextLimit: "200,000 tokens (Claude 3/3.5 Family)",
-      accountInfo: "Valid API Key. Account active.",
+      models: [{ id: "claude-3-opus", details: {} }, { id: "claude-3-5-sonnet", details: {} }, { id: "claude-3-haiku", details: {} }],
+      contextLimit: "200,000 tokens",
+      accountInfo: "Valid API Key.",
     };
   }
-
   const data = await res.json();
-  const models = data.data?.map((m: any) => ({ id: m.id || m.display_name, details: m })) || [];
-  
   return {
     provider: "Anthropic",
-    models: models,
-    contextLimit: "200,000 tokens (Claude 3/3.5 Family)",
-    accountInfo: "Valid API Key. Account active.",
+    models: data.data?.map((m: any) => ({ id: m.id || m.display_name, details: m })) || [],
+    contextLimit: "200,000 tokens",
+    accountInfo: "Valid API Key.",
   };
 }
 
 async function verifyGemini(apiKey: string) {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || "Invalid Google Gemini API Key");
-  }
-
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error?.message || "Invalid Gemini API Key");
   const data = await res.json();
-  const models = data.models.map((m: any) => ({ id: m.name.replace("models/", ""), details: m }));
-
   return {
     provider: "Google Gemini",
-    models: models,
-    contextLimit: "Up to 2,000,000 tokens (Gemini 1.5 Pro)",
+    models: data.models.map((m: any) => ({ id: m.name.replace("models/", ""), details: m })),
+    contextLimit: "Up to 2,000,000 tokens",
     accountInfo: "Valid API Key.",
   };
 }
 
 async function verifyGroq(apiKey: string) {
-  const res = await fetch("https://api.groq.com/openai/v1/models", {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || "Invalid Groq API Key");
-  }
-
+  const res = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${apiKey}` }});
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error?.message || "Invalid Groq API Key");
   const data = await res.json();
-  const models = data.data.map((m: any) => ({ id: m.id, details: m }));
-
   return {
     provider: "Groq",
-    models: models,
-    contextLimit: "Variable by model (Llama/Mixtral/Gemma)",
+    models: data.data.map((m: any) => ({ id: m.id, details: m })),
+    contextLimit: "Variable by model",
     accountInfo: "Valid Groq API Key.",
   };
 }
 
 async function verifyMistral(apiKey: string) {
-  const res = await fetch("https://api.mistral.ai/v1/models", {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || "Invalid Mistral API Key");
-  }
-
+  const res = await fetch("https://api.mistral.ai/v1/models", { headers: { Authorization: `Bearer ${apiKey}` }});
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || "Invalid Mistral API Key");
   const data = await res.json();
-  const models = data.data.map((m: any) => ({ id: m.id, details: m }));
-
   return {
     provider: "Mistral AI",
-    models: models,
-    contextLimit: "Up to 128,000 tokens (Mistral Large)",
+    models: data.data.map((m: any) => ({ id: m.id, details: m })),
+    contextLimit: "Up to 128,000 tokens",
     accountInfo: "Valid Mistral API Key.",
   };
 }
 
 async function verifyNvidia(apiKey: string) {
-  const res = await fetch("https://integrate.api.nvidia.com/v1/models", {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Invalid NVIDIA API Key");
-  }
-
+  const res = await fetch("https://integrate.api.nvidia.com/v1/models", { headers: { Authorization: `Bearer ${apiKey}` }});
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).detail || "Invalid NVIDIA API Key");
   const data = await res.json();
-  const models = data.data.map((m: any) => ({ id: m.id, details: m }));
-
   return {
     provider: "NVIDIA",
-    models: models,
+    models: data.data.map((m: any) => ({ id: m.id, details: m })),
     contextLimit: "Variable by model",
     accountInfo: "Valid NVIDIA NIM API Key.",
+  };
+}
+
+async function verifyCohere(apiKey: string) {
+  const res = await fetch("https://api.cohere.com/v1/models", { headers: { Authorization: `Bearer ${apiKey}`, accept: "application/json" }});
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || "Invalid Cohere API Key");
+  const data = await res.json();
+  return {
+    provider: "Cohere",
+    models: data.models.map((m: any) => ({ id: m.name, details: m })),
+    contextLimit: "Up to 128,000 tokens",
+    accountInfo: "Valid Cohere API Key.",
+  };
+}
+
+async function verifyPerplexity(apiKey: string) {
+  // Perplexity doesn't have a /models endpoint, verify via a minimal chat completion
+  const res = await fetch("https://api.perplexity.ai/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: "sonar-small-chat", messages: [{role: "user", content: "test"}], max_tokens: 1 })
+  });
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error?.message || "Invalid Perplexity API Key");
+  return {
+    provider: "Perplexity",
+    models: [{ id: "sonar-small-chat", details: {} }, { id: "sonar-small-online", details: {} }, { id: "sonar-medium-chat", details: {} }],
+    contextLimit: "Variable by model",
+    accountInfo: "Valid Perplexity API Key.",
+  };
+}
+
+async function verifyTogether(apiKey: string) {
+  const res = await fetch("https://api.together.xyz/v1/models", { headers: { Authorization: `Bearer ${apiKey}` }});
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error?.message || "Invalid Together AI API Key");
+  const data = await res.json();
+  return {
+    provider: "Together AI",
+    models: data.map((m: any) => ({ id: m.id, details: m })),
+    contextLimit: "Variable by model",
+    accountInfo: "Valid Together AI API Key.",
+  };
+}
+
+async function verifyOpenRouter(apiKey: string) {
+  const res = await fetch("https://openrouter.ai/api/v1/models", { headers: { Authorization: `Bearer ${apiKey}` }});
+  if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error?.message || "Invalid OpenRouter API Key");
+  const data = await res.json();
+  return {
+    provider: "OpenRouter",
+    models: data.data.map((m: any) => ({ id: m.id, details: m })),
+    contextLimit: "Variable by model",
+    accountInfo: "Valid OpenRouter API Key.",
   };
 }

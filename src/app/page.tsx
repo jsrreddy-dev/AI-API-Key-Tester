@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type ProviderId = "openai" | "anthropic" | "gemini" | "groq" | "mistral" | "nvidia";
+type ProviderId = "openai" | "anthropic" | "gemini" | "groq" | "mistral" | "nvidia" | "cohere" | "perplexity" | "together" | "openrouter";
 
 interface Provider {
   id: ProviderId;
@@ -16,6 +16,10 @@ const PROVIDERS: Provider[] = [
   { id: "groq", name: "Groq" },
   { id: "mistral", name: "Mistral AI" },
   { id: "nvidia", name: "NVIDIA" },
+  { id: "cohere", name: "Cohere" },
+  { id: "perplexity", name: "Perplexity" },
+  { id: "together", name: "Together AI" },
+  { id: "openrouter", name: "OpenRouter" },
 ];
 
 function estimateContextLimit(modelId: string) {
@@ -39,6 +43,9 @@ function estimateContextLimit(modelId: string) {
   if (id.includes('gemma-2')) return "8,192 tokens";
   if (id.includes('jamba-1.5-large')) return "256,000 tokens";
   if (id.includes('jamba-1.5-mini')) return "256,000 tokens";
+  if (id.includes('sonar')) return "127,000 tokens";
+  if (id.includes('command-r-plus')) return "128,000 tokens";
+  if (id.includes('command-r')) return "128,000 tokens";
   return "Unknown (Check provider docs)";
 }
 
@@ -53,6 +60,13 @@ export default function Home() {
   const [selectedModelDetails, setSelectedModelDetails] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Live Chat State
+  const [chatModel, setChatModel] = useState("");
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatResponse, setChatResponse] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+
   const handleTestKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!apiKey.trim()) {
@@ -66,6 +80,12 @@ export default function Home() {
     setShowAllModels(false);
     setSelectedModelDetails(null);
     setSearchQuery("");
+    
+    // Reset chat
+    setChatModel("");
+    setChatMessage("");
+    setChatResponse("");
+    setChatError(null);
 
     try {
       const response = await fetch(`/api/verify/${selectedProvider}`, {
@@ -83,10 +103,47 @@ export default function Home() {
       }
 
       setResult(data);
+      if (data.models && data.models.length > 0) {
+        setChatModel(data.models[0].id);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleChatTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatMessage.trim() || !chatModel) return;
+
+    setIsChatLoading(true);
+    setChatError(null);
+    setChatResponse("");
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey,
+          provider: selectedProvider,
+          model: chatModel,
+          message: chatMessage
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Chat failed");
+      }
+
+      setChatResponse(data.response);
+    } catch (err: any) {
+      setChatError(err.message);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -171,7 +228,7 @@ export default function Home() {
               Valid Key
             </div>
             {result.provider && (
-              <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+              <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: "600" }}>
                 {result.provider}
               </span>
             )}
@@ -254,11 +311,68 @@ export default function Home() {
                 )}
               </div>
             )}
+
+            {/* Live Chat Test Section */}
+            {result.models && result.models.length > 0 && (
+              <div style={{ gridColumn: "1 / -1", background: "rgba(0,0,0,0.2)", padding: "1.5rem", borderRadius: "12px", marginTop: "0.5rem" }}>
+                <h3 style={{ fontSize: "1rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                  Live Chat Test
+                </h3>
+                <form onSubmit={handleChatTest} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div style={{ display: "flex", gap: "1rem" }}>
+                    <select 
+                      className="modern-input modern-select" 
+                      style={{ flex: 1, background: "rgba(0,0,0,0.3)" }}
+                      value={chatModel}
+                      onChange={(e) => setChatModel(e.target.value)}
+                    >
+                      {result.models.map((m: any) => (
+                        <option key={m.id} value={m.id}>{m.id}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div style={{ display: "flex", gap: "1rem" }}>
+                    <input 
+                      type="text" 
+                      className="modern-input" 
+                      placeholder="Say hello to test generation..." 
+                      style={{ flex: 3, background: "rgba(0,0,0,0.3)" }}
+                      value={chatMessage}
+                      onChange={(e) => setChatMessage(e.target.value)}
+                    />
+                    <button 
+                      type="submit" 
+                      className="modern-button" 
+                      style={{ flex: 1, padding: "8px 16px" }}
+                      disabled={isChatLoading || !chatMessage.trim()}
+                    >
+                      {isChatLoading ? "Sending..." : "Send"}
+                    </button>
+                  </div>
+                </form>
+
+                {chatError && (
+                  <div style={{ marginTop: "1rem", padding: "1rem", background: "var(--error-bg)", color: "var(--error-color)", borderRadius: "8px", fontSize: "0.9rem", border: "1px solid rgba(248, 113, 113, 0.2)" }}>
+                    <strong>Chat Failed:</strong> {chatError}
+                  </div>
+                )}
+
+                {chatResponse && (
+                  <div style={{ marginTop: "1rem", padding: "1.5rem", background: "rgba(255,255,255,0.05)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <div style={{ fontSize: "0.85rem", color: "var(--accent-color)", marginBottom: "0.5rem", fontWeight: "600" }}>{chatModel} says:</div>
+                    <div style={{ fontSize: "0.95rem", lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
+                      {chatResponse}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             {result.contextLimit && (
               <div style={{ background: "rgba(0,0,0,0.2)", padding: "1rem", borderRadius: "12px" }}>
-                <h3 style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Max Context Limit</h3>
-                <p style={{ fontSize: "1.2rem", fontWeight: "600" }}>{result.contextLimit}</p>
+                <h3 style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Provider Default Context Limit</h3>
+                <p style={{ fontSize: "1.1rem", fontWeight: "600" }}>{result.contextLimit}</p>
               </div>
             )}
             

@@ -379,7 +379,7 @@ export default function Home() {
             {result.accountInfo && (
               <div style={{ background: "rgba(0,0,0,0.2)", padding: "1rem", borderRadius: "12px" }}>
                 <h3 style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Account Details</h3>
-                <p style={{ fontSize: "0.95rem" }}>{result.accountInfo}</p>
+                <p style={{ fontSize: "0.95rem", whiteSpace: "pre-wrap", lineHeight: "1.5" }}>{result.accountInfo}</p>
               </div>
             )}
           </div>

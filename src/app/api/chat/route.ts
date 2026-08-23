@@ -8,6 +8,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const systemPrompt = `You are a helpful assistant. The current date is ${currentDate}.`;
+
     let responseText = "";
 
     // Grouping OpenAI-compatible providers
@@ -32,7 +35,10 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: "user", content: message }],
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message }
+          ],
           max_tokens: 200,
         }),
       });
@@ -55,6 +61,7 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           model,
+          system: systemPrompt,
           max_tokens: 200,
           messages: [{ role: "user", content: message }],
         }),
@@ -74,6 +81,7 @@ export async function POST(request: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ parts: [{ text: message }] }],
         }),
       });
@@ -96,6 +104,7 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           model,
+          preamble: systemPrompt,
           message: message,
         }),
       });
